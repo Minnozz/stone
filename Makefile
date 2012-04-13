@@ -1,14 +1,16 @@
 GLEW_INCLUDE = /opt/local/include
 GLEW_LIB = /opt/local/lib
+CXX = clang
+EFLAGS = -Weverything -Werror
 
-stone: stone.o
-	gcc -o stone $^ -framework GLUT -framework OpenGL -L$(GLEW_LIB) -lGLEW
+stone: main.o world.o
+	$(CXX) -o stone $^ -framework GLUT -framework OpenGL -L$(GLEW_LIB) -lGLEW $(EFLAGS) -lm
 
 .c.o:
-	gcc -c -o $@ $< -I$(GLEW_INCLUDE)
+	$(CXX) -c -o $@ $< -I$(GLEW_INCLUDE) $(EFLAGS)
 
 clean:
-	rm stone stone.o
+	rm -f stone *.o
 
 run: stone
-	./stone
+	exec ./stone
