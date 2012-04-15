@@ -1,9 +1,9 @@
 GLEW_INCLUDE = /opt/local/include
 GLEW_LIB = /opt/local/lib
 CXX = clang
-EFLAGS = -Weverything -Wno-unused -Wno-unreachable-code -Werror
+EFLAGS = -Weverything -Wno-unused -Wno-unreachable-code -Wno-padded -Wno-c++-compat -Werror
 
-stone: main.o world.o
+stone: main.o world.o shader.o util.o
 	$(CXX) -o stone $^ -framework GLUT -framework OpenGL -L$(GLEW_LIB) -lGLEW $(EFLAGS) -lm
 
 %.o: %.c %.h

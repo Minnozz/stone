@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <GL/glew.h>
 #include <GLUT/glut.h>
 
+#include "shader.h"
 #include "world.h"
 
 // Globals
@@ -11,11 +13,37 @@ struct block *world;
 
 unsigned int vertex_amount = 0;
 unsigned int vertex_capacity = 0;
-GLuint vertex_buffer_handle;
-struct vertex *vertex_buffer;
 
 struct vec3 camera_position;
 struct vec3 camera_target;
+
+// GL resources
+
+static struct {
+	// Vertex buffer
+	GLuint vertex_buffer_handle;
+	struct vertex *vertex_buffer_data;
+
+	// Shaders
+	GLuint vertex_shader;
+	GLuint fragment_shader;
+	GLuint program;
+
+	// Uniforms
+	struct {
+		GLint modelview;
+		GLint mvp;
+	} uniforms;
+
+	struct mat4 modelview;
+	struct mat4 mvp;
+
+	// Attributes
+	struct {
+		GLint position;
+		GLint color;
+	} attributes;
+} resources;
 
 // Util functions
 
@@ -51,15 +79,15 @@ static void create_vertex(struct vec3 position, struct vec3 normal, struct color
 	unsigned int need = vertex_amount + 1;
 	if(need > vertex_capacity) {
 		vertex_capacity += 100;
-		struct vertex *new_vertex_buffer = (struct vertex *) realloc(vertex_buffer, sizeof(struct vertex) * vertex_capacity);
-		if(new_vertex_buffer == NULL) {
+		struct vertex *new_vertex_buffer_data = (struct vertex *) realloc(resources.vertex_buffer_data, sizeof(struct vertex) * vertex_capacity);
+		if(new_vertex_buffer_data == NULL) {
 			fprintf(stderr, "Could not allocate enough memory for %u vertices", need);
 			exit(1);
 		}
-		vertex_buffer = new_vertex_buffer;
+		resources.vertex_buffer_data = new_vertex_buffer_data;
 	}
 
-	struct vertex *new_vertex = vertex_buffer + vertex_amount;
+	struct vertex *new_vertex = resources.vertex_buffer_data + vertex_amount;
 
 	new_vertex->position = position;
 	new_vertex->normal = normal;
@@ -86,7 +114,7 @@ static void create_vertex_long(int position_x, int position_y, int position_z, i
 
 static void fill_vertex_buffer() {
 	// Bind buffer
-	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
+	glBindBuffer(GL_ARRAY_BUFFER, resources.vertex_buffer_handle);
 
 	// Create quads
 	for(int x = -1; x <= WORLD_SIZE_X; x++) {
@@ -148,7 +176,7 @@ static void fill_vertex_buffer() {
 		}
 	}
 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(struct vertex) * vertex_amount, vertex_buffer, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(struct vertex) * vertex_amount, resources.vertex_buffer_data, GL_STATIC_DRAW);
 }
 
 // Main functions
@@ -219,9 +247,29 @@ void world_init() {
 	}
 
 	// Create VBO
-	glGenBuffers(1, &vertex_buffer_handle);
+	glGenBuffers(1, &resources.vertex_buffer_handle);
 	fill_vertex_buffer();
 	fprintf(stderr, "Filled vertex buffer with %u vertices (%f MB)\n", vertex_amount, (sizeof(struct vertex) * vertex_amount) / (float)(1024 * 1024));
+
+	// Create shaders
+	resources.vertex_shader = make_shader(GL_VERTEX_SHADER, "res/vertex.glsl");
+	if(!resources.vertex_shader) {
+		exit(1);
+	}
+	resources.fragment_shader = make_shader(GL_FRAGMENT_SHADER, "res/fragment.glsl");
+	if(!resources.fragment_shader) {
+		exit(1);
+	}
+	resources.program = make_program(resources.vertex_shader, resources.fragment_shader);
+	if(!resources.program) {
+		exit(1);
+	}
+
+	// Bind program variables
+	resources.uniforms.modelview = glGetUniformLocation(resources.program, "modelview");
+	resources.uniforms.mvp = glGetUniformLocation(resources.program, "mvp");
+	resources.attributes.position = glGetAttribLocation(resources.program, "position");
+	resources.attributes.color = glGetAttribLocation(resources.program, "color");
 
 	// Set camera position and target
 	camera_position.x = WORLD_SIZE_X * 0.0f;
@@ -249,24 +297,27 @@ void world_display() {
 	glClearDepth(1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glPushMatrix();
+	glUseProgram(resources.program);
 
-	// Set camera position and target
-	gluLookAt(camera_position.x, camera_position.y, camera_position.z, camera_target.x, camera_target.y, camera_target.z, 0.0f, 1.0f, 0.0f);
+	// Set uniforms
+	glUniformMatrix4fv(resources.uniforms.modelview, 1, GL_FALSE, (const GLfloat *) &resources.modelview);
+	glUniformMatrix4fv(resources.uniforms.mvp, 1, GL_FALSE, (const GLfloat *) &resources.mvp);
 
-	// Bind buffer
-	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
+	// Vertex buffer
+	glBindBuffer(GL_ARRAY_BUFFER, resources.vertex_buffer_handle);
+	glVertexAttribPointer((GLuint) resources.attributes.position, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(0));
+	glEnableVertexAttribArray((GLuint) resources.attributes.position);
+	glVertexAttribPointer((GLuint) resources.attributes.color, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2));
+	glEnableVertexAttribArray((GLuint) resources.attributes.color);
 
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_NORMAL_ARRAY);
-	glEnableClientState(GL_COLOR_ARRAY);
-
-	glVertexPointer(3, GL_FLOAT, sizeof(struct vertex), BUFFER_OFFSET(0));	// 3 coordinates per vertex, float coordinates, 0 bytes spacing, 0 byte offset from start
-	glNormalPointer(GL_FLOAT, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3)));
-	glColorPointer(3, GL_FLOAT, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2));
+	//glNormalPointer(GL_FLOAT, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3)));
 
 	// Draw quads, starting at offset 0, and specify the amount
+	glPushMatrix();
+	gluLookAt(camera_position.x, camera_position.y, camera_position.z, camera_target.x, camera_target.y, camera_target.z, 0.0f, 1.0f, 0.0f);
 	glDrawArrays(GL_QUADS, 0, (GLsizei) vertex_amount);
-
 	glPopMatrix();
+
+	glDisableVertexAttribArray((GLuint) resources.attributes.position);
+	glDisableVertexAttribArray((GLuint) resources.attributes.color);
 }

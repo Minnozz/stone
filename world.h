@@ -12,13 +12,26 @@ struct vec3i {
 	int r;
 	int g;
 	int b;
-	char __padding[4];
 };
 
 struct vec3 {
 	GLfloat x;
 	GLfloat y;
 	GLfloat z;
+};
+
+struct vec4 {
+	GLfloat x;
+	GLfloat y;
+	GLfloat z;
+	GLfloat w;
+};
+
+struct mat4 {
+	struct vec4 x;
+	struct vec4 y;
+	struct vec4 z;
+	struct vec4 w;
 };
 
 struct color {
@@ -29,7 +42,6 @@ struct color {
 
 struct block {
 	char type;
-	char __padding[3];
 	struct vec3i color;
 };
 
