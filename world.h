@@ -1,7 +1,8 @@
-#define WORLD_SIZE_X 5
-#define WORLD_SIZE_Y 1
-#define WORLD_SIZE_Z 5
+#define WORLD_SIZE_X 256
+#define WORLD_SIZE_Y 64
+#define WORLD_SIZE_Z 256
 
+#define WORLD_SIZE_XZ WORLD_SIZE_X * WORLD_SIZE_Z
 #define WORLD_SIZE_XYZ WORLD_SIZE_X * WORLD_SIZE_Y * WORLD_SIZE_Z
 
 #define TYPE_AIR 0
@@ -36,6 +37,12 @@ struct vertex {
 	struct vec3 position;
 	struct vec3 normal;
 	struct color color;
+};
+
+struct height_point {
+	int x;
+	int z;
+	int height;
 };
 
 void world_init(void);

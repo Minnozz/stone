@@ -7,7 +7,6 @@
 
 // Globals
 
-int *height_map;
 struct block *world;
 
 unsigned int vertex_amount = 0;
@@ -24,15 +23,25 @@ struct vec3 camera_target;
 
 #define SELECT_HEIGHT(x, z) height_map[x + z * WORLD_SIZE_X]
 
-#define SELECT_BLOCK(x, y, z) world[x + y * WORLD_SIZE_X + z * WORLD_SIZE_X * WORLD_SIZE_Y]
+#define SELECT_BLOCK(x, y, z) world[(x) + (y) * WORLD_SIZE_X + (z) * WORLD_SIZE_X * WORLD_SIZE_Y]
 #define SELECT_BLOCK_P(x, y, z) &SELECT_BLOCK(x, y, z)
-#define SELECT_BLOCK_CHECKED_P(x, y, z) ((x < 0 || x >= WORLD_SIZE_X || y < 0 || y >= WORLD_SIZE_Y || z < 0 || z >= WORLD_SIZE_Z) ? NULL : SELECT_BLOCK_P(x, y, z))
+#define SELECT_BLOCK_CHECKED_P(x, y, z) (((x) < 0 || (x) >= WORLD_SIZE_X || (y) < 0 || (y) >= WORLD_SIZE_Y || (z) < 0 || (z) >= WORLD_SIZE_Z) ? NULL : SELECT_BLOCK_P(x, y, z))
 
-static void print_vertex(struct vertex *vert) {
+static void dump_vertex(struct vertex *vert) {
 	printf("Dumping vertex:\n");
-	printf("position = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
-	printf("normal = (%f, %f, %f)\n", vert->normal.x, vert->normal.y, vert->normal.z);
-	printf("color = (%f, %f, %f)\n", vert->color.r, vert->color.g, vert->color.b);
+	printf("\tposition = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
+	printf("\tnormal = (%f, %f, %f)\n", vert->normal.x, vert->normal.y, vert->normal.z);
+	printf("\tcolor = (%f, %f, %f)\n", vert->color.r, vert->color.g, vert->color.b);
+}
+
+inline static int clamp(int n, int min, int max) {
+	if(n < min) {
+		return min;
+	}
+	if(n > max) {
+		return max;
+	}
+	return n;
 }
 
 // VBO
@@ -57,6 +66,14 @@ static void create_vertex(struct vec3 position, struct vec3 normal, struct color
 	new_vertex->color = color;
 
 	vertex_amount++;
+}
+
+static struct color random_color() {
+	struct color color;
+	color.r = (random() % 256) / 256.0f;
+	color.g = (random() % 256) / 256.0f;
+	color.b = (random() % 256) / 256.0f;
+	return color;
 }
 
 static void create_vertex_long(int position_x, int position_y, int position_z, int normal_x, int normal_y, int normal_z, int color_r, int color_g, int color_b) {
@@ -86,42 +103,42 @@ static void fill_vertex_buffer() {
 				struct block *other;
 
 				// Positive x
-				if((other = SELECT_BLOCK_CHECKED_P(x + 1, y, z)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x+1, y, z, -1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y, z+1, -1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y+1, z+1, -1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y+1, z, -1, 0, 0, other->color.r, other->color.g, other->color.b);
 				}
 				// Negative x
-				if((other = SELECT_BLOCK_CHECKED_P(x - 1, y, z)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x, y, z+1, 1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y, z, 1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z, 1, 0, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z+1, 1, 0, 0, other->color.r, other->color.g, other->color.b);
 				}
 				// Positive y
-				if((other = SELECT_BLOCK_CHECKED_P(x, y + 1, z)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x+1, y+1, z+1, 0, -1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y+1, z, 0, -1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z, 0, -1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z+1, 0, -1, 0, other->color.r, other->color.g, other->color.b);
 				}
 				// Negative y
-				if((other = SELECT_BLOCK_CHECKED_P(x, y - 1, z)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x, y, z, 0, 1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y, z, 0, 1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y, z+1, 0, 1, 0, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y, z+1, 0, 1, 0, other->color.r, other->color.g, other->color.b);
 				}
 				// Positive z
-				if((other = SELECT_BLOCK_CHECKED_P(x, y, z + 1)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x+1, y, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y+1, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
 				}
 				// Negative z
-				if((other = SELECT_BLOCK_CHECKED_P(x, y, z - 1)) != NULL && other->type != TYPE_AIR) {
+				if((other = SELECT_BLOCK_CHECKED_P(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
 					create_vertex_long(x, y, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x, y+1, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
 					create_vertex_long(x+1, y+1, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
@@ -137,42 +154,52 @@ static void fill_vertex_buffer() {
 // Main functions
 
 void world_init() {
-	// Generate random world
-	height_map = (int *) malloc(sizeof(int) * WORLD_SIZE_XYZ);
+	printf("World size: %dx%dx%d\n", WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z);
 
+	// Seed random number generator
+	srandomdev();
+
+	// Create height points
+	unsigned int height_points_amount = WORLD_SIZE_XZ / 2000;
+	printf("Generating %u height points\n", height_points_amount);
+	struct height_point *height_points = (struct height_point *) malloc(sizeof(struct height_point) * height_points_amount);
+	for(unsigned int i = 0; i < height_points_amount; i++) {
+		struct height_point *point = &height_points[i];
+
+		point->x = random() % WORLD_SIZE_X;
+		point->z = random() % WORLD_SIZE_Z;
+		point->height = random() % WORLD_SIZE_Y;
+	}
+
+	// Create height map (height for every (x,z) coordinate)
+	printf("Generating height map\n");
+	int *height_map = (int *) malloc(sizeof(int) * WORLD_SIZE_XZ);
 	for(int x = 0; x < WORLD_SIZE_X; x++) {
 		for(int z = 0; z < WORLD_SIZE_Z; z++) {
-			SELECT_HEIGHT(x, z) = WORLD_SIZE_Y;
-#if 0
-			int offset = 0;
+			float total_height = 0;
+			float total_weight = 0;
 
-			switch(random() % 8) {
-				case 0:	offset = -2; break;
-				case 1:	offset = -1; break;
-				case 2:	offset = 0; break;
-				case 3:	offset = 0; break;
-				case 4:	offset = 0; break;
-				case 5:	offset = 0; break;
-				case 6:	offset = 1; break;
-				case 7:	offset = 2; break;
+			// Height is the weighted average of all height points (weight = distance) with some noise
+			for(unsigned int i = 0; i < height_points_amount; i++) {
+				struct height_point *point = &height_points[i];
+
+				if(x == point->x && z == point->z) {
+					total_height += point->height;
+					total_weight += 1;
+				} else {
+					float weight = (float) (1 / (pow(x - point->x, 2) + pow(z - point->z, 2)));
+					total_height += point->height * weight;
+					total_weight += weight;
+				}
 			}
 
-			if(x == 0 && z == 0) {
-				SELECT_HEIGHT(x, z) = WORLD_SIZE_Y / 2;
-			} else if(x == 0) {
-				SELECT_HEIGHT(x, z) = offset + SELECT_HEIGHT(x, z - 1);
-			} else if(z == 0) {
-				SELECT_HEIGHT(x, z) = offset + SELECT_HEIGHT(x - 1, z);
-			} else {
-				SELECT_HEIGHT(x, z) = offset + (int) round((SELECT_HEIGHT(x - 1, z) + SELECT_HEIGHT(x, z - 1) + SELECT_HEIGHT(x - 1, z - 1)) / 3.0f);
-			}
-#endif
+			SELECT_HEIGHT(x, z) = (int) (total_height / total_weight) + (random() % 2);
 		}
 	}
 
 	// Populate world with blocks
+	printf("Generating blocks\n");
 	world = (struct block *) malloc(sizeof(struct block) * WORLD_SIZE_XYZ);
-
 	for(int x = 0; x < WORLD_SIZE_X; x++) {
 		for(int y = 0; y < WORLD_SIZE_Y; y++) {
 			for(int z = 0; z < WORLD_SIZE_Z; z++) {
@@ -180,9 +207,10 @@ void world_init() {
 
 				if(y <= SELECT_HEIGHT(x, z)) {
 					current->type = TYPE_STONE;
-					current->color.r = (random() % 128) + 64;
-					current->color.g = (random() % 128) + 64;
-					current->color.b = (random() % 128) + 64;
+					int r = random() % 8;
+					current->color.r = 38 + r;
+					current->color.g = 32 + r;
+					current->color.b = 32 + r;
 				} else {
 					current->type = TYPE_AIR;
 				}
@@ -193,32 +221,34 @@ void world_init() {
 	// Create VBO
 	glGenBuffers(1, &vertex_buffer_handle);
 	fill_vertex_buffer();
-	fprintf(stderr, "Filled vertex buffer with %u vertices\n", vertex_amount);
+	fprintf(stderr, "Filled vertex buffer with %u vertices (%f MB)\n", vertex_amount, (sizeof(struct vertex) * vertex_amount) / (float)(1024 * 1024));
 
 	// Set camera position and target
-	camera_position.x = WORLD_SIZE_X * 2.0f;
-	camera_position.y = WORLD_SIZE_Y * 4.0f;
-	camera_position.z = WORLD_SIZE_Z * 2.0f;
-	camera_target.x = WORLD_SIZE_X / 2.0f;
-	camera_target.y = WORLD_SIZE_Y / 2.0f;
-	camera_target.z = WORLD_SIZE_Z / 2.0f;
-
-	print_vertex(&vertex_buffer[0]);
+	camera_position.x = WORLD_SIZE_X * 0.0f;
+	camera_position.y = WORLD_SIZE_Y * 0.5f;
+	camera_position.z = WORLD_SIZE_Z * 0.05f;
+	camera_target.x = WORLD_SIZE_X * 1.0f;
+	camera_target.y = WORLD_SIZE_Y * 0.6f;
+	camera_target.z = WORLD_SIZE_Z * 1.0f;
 }
 
-void world_tick(int delta __unused) {
-#if 0
-	// Set camera position and target
-	camera_position.x += delta * -0.005f;
-	camera_position.y += delta * 0.002f;
-	camera_position.z += delta * -0.005f;
-	//camera_target.x += delta * 0.0005f;
-	camera_target.y += delta * -0.005f;
-	camera_target.z += delta * -0.01f;
-#endif
+void world_tick(int delta) {
+	// Move camera position
+	camera_position.x += delta * WORLD_SIZE_X * 0.00005f;
+	camera_position.y += delta * WORLD_SIZE_Y * 0.00001f;
+	camera_position.z += delta * WORLD_SIZE_Z * 0.0f;
+
+	// Move camera target
+	camera_target.x += delta * WORLD_SIZE_X * -0.00005f;
+	camera_target.y += delta * WORLD_SIZE_Y * 0.0f;
+	camera_target.z += delta * WORLD_SIZE_Z * 0.0f;
 }
 
 void world_display() {
+	glClearColor(0.8f, 1.0f, 1.0f, 0.0f);
+	glClearDepth(1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	glPushMatrix();
 
 	// Set camera position and target

@@ -1,12 +1,12 @@
 GLEW_INCLUDE = /opt/local/include
 GLEW_LIB = /opt/local/lib
 CXX = clang
-EFLAGS = -Weverything -Werror
+EFLAGS = -Weverything -Wno-unused -Wno-unreachable-code -Werror
 
 stone: main.o world.o
 	$(CXX) -o stone $^ -framework GLUT -framework OpenGL -L$(GLEW_LIB) -lGLEW $(EFLAGS) -lm
 
-.c.o:
+%.o: %.c %.h
 	$(CXX) -c -o $@ $< -I$(GLEW_INCLUDE) $(EFLAGS)
 
 clean:
