@@ -57,6 +57,6 @@ struct height_point {
 	int height;
 };
 
-void world_init(void);
+void world_init(const char *vertex_shader_filename, const char *fragment_shader_filename);
 void world_tick(int delta);
 void world_display(void);

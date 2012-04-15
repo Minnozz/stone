@@ -3,6 +3,7 @@
 #include <GLUT/glut.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "main.h"
 #include "world.h"
@@ -16,7 +17,7 @@ int fps_last_update;
 
 // Functions
 
-void init() {
+void init(const char *vertex_shader_filename, const char *fragment_shader_filename) {
 	// Initialize timers
 	previous_frame = glutGet(GLUT_ELAPSED_TIME);
 	fps_counter = 0;
@@ -34,7 +35,7 @@ void init() {
 	glShadeModel(GL_SMOOTH);
 
 	// Initialize world
-	world_init();
+	world_init(vertex_shader_filename, fragment_shader_filename);
 }
 
 void idle() {
@@ -71,6 +72,15 @@ void display() {
 int main(int argc, char **argv) {
 	glutInit(&argc, argv);
 
+	char *vertex_shader_filename, *fragment_shader_filename;
+	if(argc == 3) {
+		vertex_shader_filename = strdup(argv[1]);
+		fragment_shader_filename = strdup(argv[1]);
+	} else {
+		vertex_shader_filename = "res/vertex.glsl";
+		fragment_shader_filename = "res/fragment.glsl";
+	}
+
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
 	glutInitWindowSize(1024, 768);
 	glutCreateWindow("Stone");
@@ -84,7 +94,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	init();
+	init(vertex_shader_filename, fragment_shader_filename);
 
 	glutMainLoop();
 

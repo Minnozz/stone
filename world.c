@@ -41,6 +41,7 @@ static struct {
 	// Attributes
 	struct {
 		GLint position;
+		GLint normal;
 		GLint color;
 	} attributes;
 } resources;
@@ -181,7 +182,7 @@ static void fill_vertex_buffer() {
 
 // Main functions
 
-void world_init() {
+void world_init(const char *vertex_shader_filename, const char *fragment_shader_filename) {
 	printf("World size: %dx%dx%d\n", WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z);
 
 	// Seed random number generator
@@ -252,11 +253,11 @@ void world_init() {
 	fprintf(stderr, "Filled vertex buffer with %u vertices (%f MB)\n", vertex_amount, (sizeof(struct vertex) * vertex_amount) / (float)(1024 * 1024));
 
 	// Create shaders
-	resources.vertex_shader = make_shader(GL_VERTEX_SHADER, "res/vertex.glsl");
+	resources.vertex_shader = make_shader(GL_VERTEX_SHADER, vertex_shader_filename);
 	if(!resources.vertex_shader) {
 		exit(1);
 	}
-	resources.fragment_shader = make_shader(GL_FRAGMENT_SHADER, "res/fragment.glsl");
+	resources.fragment_shader = make_shader(GL_FRAGMENT_SHADER, fragment_shader_filename);
 	if(!resources.fragment_shader) {
 		exit(1);
 	}
@@ -269,6 +270,7 @@ void world_init() {
 	resources.uniforms.modelview = glGetUniformLocation(resources.program, "modelview");
 	resources.uniforms.mvp = glGetUniformLocation(resources.program, "mvp");
 	resources.attributes.position = glGetAttribLocation(resources.program, "position");
+	resources.attributes.normal = glGetAttribLocation(resources.program, "normal");
 	resources.attributes.color = glGetAttribLocation(resources.program, "color");
 
 	// Set camera position and target
@@ -293,7 +295,7 @@ void world_tick(int delta) {
 }
 
 void world_display() {
-	glClearColor(0.8f, 1.0f, 1.0f, 0.0f);
+	glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
 	glClearDepth(1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -307,10 +309,10 @@ void world_display() {
 	glBindBuffer(GL_ARRAY_BUFFER, resources.vertex_buffer_handle);
 	glVertexAttribPointer((GLuint) resources.attributes.position, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(0));
 	glEnableVertexAttribArray((GLuint) resources.attributes.position);
+	glVertexAttribPointer((GLuint) resources.attributes.normal, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3)));
+	glEnableVertexAttribArray((GLuint) resources.attributes.normal);
 	glVertexAttribPointer((GLuint) resources.attributes.color, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2));
 	glEnableVertexAttribArray((GLuint) resources.attributes.color);
-
-	//glNormalPointer(GL_FLOAT, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3)));
 
 	// Draw quads, starting at offset 0, and specify the amount
 	glPushMatrix();
@@ -319,5 +321,6 @@ void world_display() {
 	glPopMatrix();
 
 	glDisableVertexAttribArray((GLuint) resources.attributes.position);
+	glDisableVertexAttribArray((GLuint) resources.attributes.normal);
 	glDisableVertexAttribArray((GLuint) resources.attributes.color);
 }
