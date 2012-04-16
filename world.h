@@ -1,12 +1,28 @@
-#define WORLD_SIZE_X 256
-#define WORLD_SIZE_Y 64
-#define WORLD_SIZE_Z 256
+#ifndef _WORLD_H
+#define _WORLD_H
+
+#define WORLD_SIZE_X 32
+#define WORLD_SIZE_Y 32
+#define WORLD_SIZE_Z 32
 
 #define WORLD_SIZE_XZ WORLD_SIZE_X * WORLD_SIZE_Z
 #define WORLD_SIZE_XYZ WORLD_SIZE_X * WORLD_SIZE_Y * WORLD_SIZE_Z
 
 #define TYPE_AIR 0
 #define TYPE_STONE 1
+
+#define SELECT_BLOCK(x, y, z) world[(x) + (y) * WORLD_SIZE_X + (z) * WORLD_SIZE_X * WORLD_SIZE_Y]
+#define SELECT_BLOCK_P(x, y, z) &SELECT_BLOCK(x, y, z)
+#define SELECT_BLOCK_CHECKED_P(x, y, z) (((x) < 0 || (x) >= WORLD_SIZE_X || (y) < 0 || (y) >= WORLD_SIZE_Y || (z) < 0 || (z) >= WORLD_SIZE_Z) ? NULL : SELECT_BLOCK_P(x, y, z))
+
+enum FACE {
+	UP,
+	DOWN,
+	LEFT,
+	RIGHT,
+	FRONT,
+	BACK
+};
 
 struct vec3i {
 	int r;
@@ -40,15 +56,26 @@ struct color {
 	GLfloat b;
 };
 
+struct directions {
+	float up;
+	float down;
+	float left;
+	float right;
+	float front;
+	float back;
+};
+
 struct block {
 	char type;
 	struct vec3i color;
+	struct directions occlusion;
 };
 
 struct vertex {
 	struct vec3 position;
 	struct vec3 normal;
 	struct color color;
+	GLfloat light;
 };
 
 struct height_point {
@@ -60,3 +87,5 @@ struct height_point {
 void world_init(const char *vertex_shader_filename, const char *fragment_shader_filename);
 void world_tick(int delta);
 void world_display(void);
+
+#endif /* !defined _WORLD_H */

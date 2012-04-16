@@ -5,6 +5,7 @@
 #include <GLUT/glut.h>
 
 #include "shader.h"
+#include "occlusion.h"
 #include "world.h"
 
 // Globals
@@ -43,6 +44,7 @@ static struct {
 		GLint position;
 		GLint normal;
 		GLint color;
+		GLint light;
 	} attributes;
 } resources;
 
@@ -52,30 +54,24 @@ static struct {
 
 #define SELECT_HEIGHT(x, z) height_map[x + z * WORLD_SIZE_X]
 
-#define SELECT_BLOCK(x, y, z) world[(x) + (y) * WORLD_SIZE_X + (z) * WORLD_SIZE_X * WORLD_SIZE_Y]
-#define SELECT_BLOCK_P(x, y, z) &SELECT_BLOCK(x, y, z)
-#define SELECT_BLOCK_CHECKED_P(x, y, z) (((x) < 0 || (x) >= WORLD_SIZE_X || (y) < 0 || (y) >= WORLD_SIZE_Y || (z) < 0 || (z) >= WORLD_SIZE_Z) ? NULL : SELECT_BLOCK_P(x, y, z))
-
 static void dump_vertex(struct vertex *vert) {
 	printf("Dumping vertex:\n");
 	printf("\tposition = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
 	printf("\tnormal = (%f, %f, %f)\n", vert->normal.x, vert->normal.y, vert->normal.z);
 	printf("\tcolor = (%f, %f, %f)\n", vert->color.r, vert->color.g, vert->color.b);
+	printf("\tlight = %f\n", vert->light);
 }
 
-inline static int clamp(int n, int min, int max) {
-	if(n < min) {
-		return min;
-	}
-	if(n > max) {
-		return max;
-	}
-	return n;
+static void dump_block(struct block *block) {
+	printf("Dumping block:\n");
+	printf("\ttype = %d\n", block->type);
+	printf("\tcolor = (%d, %d, %d)\n", block->color.r, block->color.g, block->color.b);
+	printf("\tocclusion = (%f, %f, %f, %f, %f, %f)\n", block->occlusion.up, block->occlusion.down, block->occlusion.left, block->occlusion.right, block->occlusion.front, block->occlusion.back);
 }
 
 // VBO
 
-static void create_vertex(struct vec3 position, struct vec3 normal, struct color color) {
+static void create_vertex(int px, int py, int pz, int nx, int ny, int nz, struct block *block, enum FACE face) {
 	// Grow the vertex buffer if necessary
 	unsigned int need = vertex_amount + 1;
 	if(need > vertex_capacity) {
@@ -90,27 +86,37 @@ static void create_vertex(struct vec3 position, struct vec3 normal, struct color
 
 	struct vertex *new_vertex = resources.vertex_buffer_data + vertex_amount;
 
-	new_vertex->position = position;
-	new_vertex->normal = normal;
-	new_vertex->color = color;
+	new_vertex->position.x = (GLfloat) px;
+	new_vertex->position.y = (GLfloat) py;
+	new_vertex->position.z = (GLfloat) pz;
+	new_vertex->normal.x = (GLfloat) nx;
+	new_vertex->normal.y = (GLfloat) ny;
+	new_vertex->normal.z = (GLfloat) nz;
+	new_vertex->color.r = (GLfloat) (block->color.r / 256.0f);
+	new_vertex->color.g = (GLfloat) (block->color.g / 256.0f);
+	new_vertex->color.b = (GLfloat) (block->color.b / 256.0f);
+	switch(face) {
+		case UP:
+			new_vertex->light = block->occlusion.up;
+			break;
+		case DOWN:
+			new_vertex->light = block->occlusion.down;
+			break;
+		case LEFT:
+			new_vertex->light = block->occlusion.left;
+			break;
+		case RIGHT:
+			new_vertex->light = block->occlusion.right;
+			break;
+		case FRONT:
+			new_vertex->light = block->occlusion.front;
+			break;
+		case BACK:
+			new_vertex->light = block->occlusion.back;
+			break;
+	}
 
 	vertex_amount++;
-}
-
-static struct color random_color() {
-	struct color color;
-	color.r = (random() % 256) / 256.0f;
-	color.g = (random() % 256) / 256.0f;
-	color.b = (random() % 256) / 256.0f;
-	return color;
-}
-
-static void create_vertex_long(int position_x, int position_y, int position_z, int normal_x, int normal_y, int normal_z, int color_r, int color_g, int color_b) {
-	struct vec3 position = { (GLfloat) position_x, (GLfloat) position_y, (GLfloat) position_z };
-	struct vec3 normal = { (GLfloat) normal_x, (GLfloat) normal_y, (GLfloat) normal_z };
-	struct color color = { (GLfloat) (color_r / 256.0f), (GLfloat) (color_g / 256.0f), (GLfloat) (color_b / 256.0f) };
-
-	create_vertex(position, normal, color);
 }
 
 static void fill_vertex_buffer() {
@@ -130,48 +136,55 @@ static void fill_vertex_buffer() {
 
 				// Check the blocks directly adjacent to the six faces of the current block
 				struct block *other;
+				enum FACE face;
 
 				// Positive x
 				if((other = SELECT_BLOCK_CHECKED_P(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x+1, y, z, -1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y, z+1, -1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y+1, z+1, -1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y+1, z, -1, 0, 0, other->color.r, other->color.g, other->color.b);
+					face = RIGHT;
+					create_vertex(x+1, y, z, -1, 0, 0, other, face);
+					create_vertex(x+1, y, z+1, -1, 0, 0, other, face);
+					create_vertex(x+1, y+1, z+1, -1, 0, 0, other, face);
+					create_vertex(x+1, y+1, z, -1, 0, 0, other, face);
 				}
 				// Negative x
 				if((other = SELECT_BLOCK_CHECKED_P(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x, y, z+1, 1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y, z, 1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z, 1, 0, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z+1, 1, 0, 0, other->color.r, other->color.g, other->color.b);
+					face = LEFT;
+					create_vertex(x, y, z+1, 1, 0, 0, other, face);
+					create_vertex(x, y, z, 1, 0, 0, other, face);
+					create_vertex(x, y+1, z, 1, 0, 0, other, face);
+					create_vertex(x, y+1, z+1, 1, 0, 0, other, face);
 				}
 				// Positive y
 				if((other = SELECT_BLOCK_CHECKED_P(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x+1, y+1, z+1, 0, -1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y+1, z, 0, -1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z, 0, -1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z+1, 0, -1, 0, other->color.r, other->color.g, other->color.b);
+					face = UP;
+					create_vertex(x+1, y+1, z+1, 0, -1, 0, other, face);
+					create_vertex(x+1, y+1, z, 0, -1, 0, other, face);
+					create_vertex(x, y+1, z, 0, -1, 0, other, face);
+					create_vertex(x, y+1, z+1, 0, -1, 0, other, face);
 				}
 				// Negative y
 				if((other = SELECT_BLOCK_CHECKED_P(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x, y, z, 0, 1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y, z, 0, 1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y, z+1, 0, 1, 0, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y, z+1, 0, 1, 0, other->color.r, other->color.g, other->color.b);
+					face = DOWN;
+					create_vertex(x, y, z, 0, 1, 0, other, face);
+					create_vertex(x+1, y, z, 0, 1, 0, other, face);
+					create_vertex(x+1, y, z+1, 0, 1, 0, other, face);
+					create_vertex(x, y, z+1, 0, 1, 0, other, face);
 				}
 				// Positive z
 				if((other = SELECT_BLOCK_CHECKED_P(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x+1, y, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y+1, z+1, 0, 0, -1, other->color.r, other->color.g, other->color.b);
+					face = FRONT;
+					create_vertex(x+1, y, z+1, 0, 0, -1, other, face);
+					create_vertex(x, y, z+1, 0, 0, -1, other, face);
+					create_vertex(x, y+1, z+1, 0, 0, -1, other, face);
+					create_vertex(x+1, y+1, z+1, 0, 0, -1, other, face);
 				}
 				// Negative z
 				if((other = SELECT_BLOCK_CHECKED_P(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
-					create_vertex_long(x, y, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x, y+1, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y+1, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
-					create_vertex_long(x+1, y, z, 0, 0, 1, other->color.r, other->color.g, other->color.b);
+					face = BACK;
+					create_vertex(x, y, z, 0, 0, 1, other, face);
+					create_vertex(x, y+1, z, 0, 0, 1, other, face);
+					create_vertex(x+1, y+1, z, 0, 0, 1, other, face);
+					create_vertex(x+1, y, z, 0, 0, 1, other, face);
 				}
 			}
 		}
@@ -190,6 +203,9 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 
 	// Create height points
 	unsigned int height_points_amount = WORLD_SIZE_XZ / 2000;
+	if(height_points_amount < 3) {
+		height_points_amount = 3;
+	}
 	printf("Generating %u height points\n", height_points_amount);
 	struct height_point *height_points = (struct height_point *) malloc(sizeof(struct height_point) * height_points_amount);
 	for(unsigned int i = 0; i < height_points_amount; i++) {
@@ -237,9 +253,12 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 				if(y <= SELECT_HEIGHT(x, z)) {
 					current->type = TYPE_STONE;
 					int r = random() % 8;
-					current->color.r = 38 + r;
-					current->color.g = 32 + r;
-					current->color.b = 32 + r;
+					current->color.r = 128;
+					current->color.g = 128;
+					current->color.b = 128;
+					//current->color.r = 38 + r;
+					//current->color.g = 32 + r;
+					//current->color.b = 32 + r;
 				} else {
 					current->type = TYPE_AIR;
 				}
@@ -247,9 +266,16 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 		}
 	}
 
+	// Calculate occlusion values
+	printf("Calculating occlusion\n");
+	calculate_occlusion(world);
+	dump_block(&world[0]);
+
 	// Create VBO
+	printf("Creating vertex buffer\n");
 	glGenBuffers(1, &resources.vertex_buffer_handle);
 	fill_vertex_buffer();
+	dump_vertex(&resources.vertex_buffer_data[0]);
 	fprintf(stderr, "Filled vertex buffer with %u vertices (%f MB)\n", vertex_amount, (sizeof(struct vertex) * vertex_amount) / (float)(1024 * 1024));
 
 	// Create shaders
@@ -272,6 +298,7 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 	resources.attributes.position = glGetAttribLocation(resources.program, "position");
 	resources.attributes.normal = glGetAttribLocation(resources.program, "normal");
 	resources.attributes.color = glGetAttribLocation(resources.program, "color");
+	resources.attributes.light = glGetAttribLocation(resources.program, "light");
 
 	// Set camera position and target
 	camera_position.x = WORLD_SIZE_X * 0.0f;
@@ -313,6 +340,8 @@ void world_display() {
 	glEnableVertexAttribArray((GLuint) resources.attributes.normal);
 	glVertexAttribPointer((GLuint) resources.attributes.color, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2));
 	glEnableVertexAttribArray((GLuint) resources.attributes.color);
+	glVertexAttribPointer((GLuint) resources.attributes.light, 1, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2 + sizeof(struct color)));
+	glEnableVertexAttribArray((GLuint) resources.attributes.light);
 
 	// Draw quads, starting at offset 0, and specify the amount
 	glPushMatrix();
@@ -323,4 +352,5 @@ void world_display() {
 	glDisableVertexAttribArray((GLuint) resources.attributes.position);
 	glDisableVertexAttribArray((GLuint) resources.attributes.normal);
 	glDisableVertexAttribArray((GLuint) resources.attributes.color);
+	glDisableVertexAttribArray((GLuint) resources.attributes.light);
 }
