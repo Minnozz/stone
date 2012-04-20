@@ -20,6 +20,6 @@ struct offset {
 	//float depth;
 };
 
-void calculate_occlusion(struct block *world);
+void calculate_occlusion(void);
 
 #endif /* !defined _OCCLUSION_H */

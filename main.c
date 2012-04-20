@@ -17,7 +17,10 @@ int fps_last_update;
 
 // Functions
 
-void init(const char *vertex_shader_filename, const char *fragment_shader_filename) {
+void init(int argc, char **argv) {
+	// Seed random number generator
+	srandomdev();
+
 	// Initialize timers
 	previous_frame = glutGet(GLUT_ELAPSED_TIME);
 	fps_counter = 0;
@@ -35,7 +38,7 @@ void init(const char *vertex_shader_filename, const char *fragment_shader_filena
 	glShadeModel(GL_SMOOTH);
 
 	// Initialize world
-	world_init(vertex_shader_filename, fragment_shader_filename);
+	world_init(argc, argv);
 }
 
 void idle() {
@@ -72,15 +75,6 @@ void display() {
 int main(int argc, char **argv) {
 	glutInit(&argc, argv);
 
-	char *vertex_shader_filename, *fragment_shader_filename;
-	if(argc == 3) {
-		vertex_shader_filename = strdup(argv[1]);
-		fragment_shader_filename = strdup(argv[1]);
-	} else {
-		vertex_shader_filename = "res/vertex.glsl";
-		fragment_shader_filename = "res/fragment.glsl";
-	}
-
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
 	glutInitWindowSize(1024, 768);
 	glutCreateWindow("Stone");
@@ -94,7 +88,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	init(vertex_shader_filename, fragment_shader_filename);
+	init(argc, argv);
 
 	glutMainLoop();
 

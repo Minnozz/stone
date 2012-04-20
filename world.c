@@ -1,15 +1,22 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <unistd.h>
+#include <assert.h>
+#include <string.h>
 #include <GL/glew.h>
 #include <GLUT/glut.h>
 
 #include "shader.h"
 #include "occlusion.h"
+#include "util.h"
 #include "world.h"
 
 // Globals
 
+int ticks = 0;
+
+int *height_map;
 struct block *world;
 
 unsigned int vertex_amount = 0;
@@ -44,7 +51,7 @@ static struct {
 		GLint position;
 		GLint normal;
 		GLint color;
-		GLint light;
+		GLint occlusion;
 	} attributes;
 } resources;
 
@@ -52,26 +59,120 @@ static struct {
 
 #define BUFFER_OFFSET(n) ((void *) (n))
 
-#define SELECT_HEIGHT(x, z) height_map[x + z * WORLD_SIZE_X]
+inline struct block *get_block(int x, int y, int z) {
+	if(x < 0 || x >= WORLD_SIZE_X) {
+		return NULL;
+	}
+	if(y < 0 || y >= WORLD_SIZE_Y) {
+		return NULL;
+	}
+	if(z < 0 || z >= WORLD_SIZE_Z) {
+		return NULL;
+	}
+	return world + x + y * WORLD_SIZE_X + z * WORLD_SIZE_X * WORLD_SIZE_Y;
+}
+
+static inline int get_height(int x, int z) {
+	return height_map[x + z * WORLD_SIZE_X];
+}
+
+static inline void set_height(int x, int z, int height) {
+	height_map[x + z * WORLD_SIZE_X] = height;
+}
 
 static void dump_vertex(struct vertex *vert) {
-	printf("Dumping vertex:\n");
-	printf("\tposition = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
-	printf("\tnormal = (%f, %f, %f)\n", vert->normal.x, vert->normal.y, vert->normal.z);
-	printf("\tcolor = (%f, %f, %f)\n", vert->color.r, vert->color.g, vert->color.b);
-	printf("\tlight = %f\n", vert->light);
+	fprintf(stderr, "Dumping vertex:\n");
+	fprintf(stderr, "\tposition = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
+	fprintf(stderr, "\tnormal = (%f, %f, %f)\n", vert->normal.x, vert->normal.y, vert->normal.z);
+	fprintf(stderr, "\tcolor = (%f, %f, %f)\n", vert->color.r, vert->color.g, vert->color.b);
+	fprintf(stderr, "\tocclusion = %f\n", vert->occlusion);
 }
 
 static void dump_block(struct block *block) {
-	printf("Dumping block:\n");
-	printf("\ttype = %d\n", block->type);
-	printf("\tcolor = (%d, %d, %d)\n", block->color.r, block->color.g, block->color.b);
-	printf("\tocclusion = (%f, %f, %f, %f, %f, %f)\n", block->occlusion.up, block->occlusion.down, block->occlusion.left, block->occlusion.right, block->occlusion.front, block->occlusion.back);
+	fprintf(stderr, "Dumping block:\n");
+	fprintf(stderr, "\ttype = %d\n", block->type);
+	fprintf(stderr, "\tcolor = (%f, %f, %f)\n", block->color.r, block->color.g, block->color.b);
+	fprintf(stderr, "\tocclusion = (%f, %f, %f, %f, %f, %f)\n", block->occlusion.up, block->occlusion.down, block->occlusion.left, block->occlusion.right, block->occlusion.front, block->occlusion.back);
+}
+
+// Height map
+
+static void load_height_map(char *filename) {
+	fprintf(stderr, "Loading height map %s\n", filename);
+	int length;
+	char *data = file_contents(filename, &length);
+	if(data == NULL) {
+		fprintf(stderr, "Could not load height map %s\n", filename);
+		exit(1);
+	}
+
+	height_map = (int *) malloc(sizeof(int) * WORLD_SIZE_XZ);
+	for(int z = 0; z < WORLD_SIZE_Z; z++) {
+		for(int x = 0; x < WORLD_SIZE_X; x++) {
+			assert(*data++ == '[');
+			char *end = strchr(data, ']');
+			assert(end != NULL);
+			*end = '\0';
+			int height = atoi(data);
+			assert(height >= 0);
+			data = end + 1;
+
+			set_height(x, z, height);
+			fprintf(stderr, "Set height to %d for coordinate (%d,%d)\n", height, x, z);
+		}
+		assert(*data++ == '\n');
+	}
+	assert(*data == '\0');
+}
+
+static void create_random_height_map() {
+	// Determine amount of points to use
+	unsigned int height_points_amount = WORLD_SIZE_XZ / 2000;
+	if(height_points_amount < 3) {
+		height_points_amount = 3;
+	}
+	fprintf(stderr, "Generating %u height points\n", height_points_amount);
+	struct height_point *height_points = (struct height_point *) malloc(sizeof(struct height_point) * height_points_amount);
+	for(unsigned int i = 0; i < height_points_amount; i++) {
+		struct height_point *point = &height_points[i];
+
+		point->x = random() % WORLD_SIZE_X;
+		point->z = random() % WORLD_SIZE_Z;
+		point->height = random() % (WORLD_SIZE_Y + 1);
+
+		fprintf(stderr, "\ty = %d at (%d,%d)\n", point->height, point->x, point->z);
+	}
+
+	// Create height map (height for every (x,z) coordinate)
+	fprintf(stderr, "Generating height map\n");
+	height_map = (int *) malloc(sizeof(int) * WORLD_SIZE_XZ);
+	for(int x = 0; x < WORLD_SIZE_X; x++) {
+		for(int z = 0; z < WORLD_SIZE_Z; z++) {
+			float total_height = 0;
+			float total_weight = 0;
+
+			// Height is the weighted average of all height points (weight = distance) with some noise
+			for(unsigned int i = 0; i < height_points_amount; i++) {
+				struct height_point *point = &height_points[i];
+
+				if(x == point->x && z == point->z) {
+					total_height += point->height;
+					total_weight += 1;
+				} else {
+					float weight = (float) (1 / (pow(x - point->x, 2) + pow(z - point->z, 2)));
+					total_height += point->height * weight;
+					total_weight += weight;
+				}
+			}
+
+			set_height(x, z, (int) (total_height / total_weight) + (random() % 2));
+		}
+	}
 }
 
 // VBO
 
-static void create_vertex(int px, int py, int pz, int nx, int ny, int nz, struct block *block, enum FACE face) {
+static void create_vertex(int px, int py, int pz, int nx, int ny, int nz, struct color color, GLfloat occlusion) {
 	// Grow the vertex buffer if necessary
 	unsigned int need = vertex_amount + 1;
 	if(need > vertex_capacity) {
@@ -92,29 +193,8 @@ static void create_vertex(int px, int py, int pz, int nx, int ny, int nz, struct
 	new_vertex->normal.x = (GLfloat) nx;
 	new_vertex->normal.y = (GLfloat) ny;
 	new_vertex->normal.z = (GLfloat) nz;
-	new_vertex->color.r = (GLfloat) (block->color.r / 256.0f);
-	new_vertex->color.g = (GLfloat) (block->color.g / 256.0f);
-	new_vertex->color.b = (GLfloat) (block->color.b / 256.0f);
-	switch(face) {
-		case UP:
-			new_vertex->light = block->occlusion.up;
-			break;
-		case DOWN:
-			new_vertex->light = block->occlusion.down;
-			break;
-		case LEFT:
-			new_vertex->light = block->occlusion.left;
-			break;
-		case RIGHT:
-			new_vertex->light = block->occlusion.right;
-			break;
-		case FRONT:
-			new_vertex->light = block->occlusion.front;
-			break;
-		case BACK:
-			new_vertex->light = block->occlusion.back;
-			break;
-	}
+	new_vertex->color = color;
+	new_vertex->occlusion = occlusion;
 
 	vertex_amount++;
 }
@@ -123,68 +203,66 @@ static void fill_vertex_buffer() {
 	// Bind buffer
 	glBindBuffer(GL_ARRAY_BUFFER, resources.vertex_buffer_handle);
 
-	// Create quads
+	// Loop through all blocks (and a 1 block layer outside the map to 'look at' the outer faces)
 	for(int x = -1; x <= WORLD_SIZE_X; x++) {
 		for(int y = -1; y <= WORLD_SIZE_Y; y++) {
 			for(int z = -1; z <= WORLD_SIZE_Z; z++) {
-				// Get block
-				struct block *current = SELECT_BLOCK_CHECKED_P(x, y, z);
+				struct block *current = get_block(x, y, z);
 				if(current != NULL && current->type != TYPE_AIR) {
-					// Only create vertices from air/empty blocks (looking outwards)
+					// Only create vertices from the empty layer around the map or an AIR block
 					continue;
 				}
 
-				// Check the blocks directly adjacent to the six faces of the current block
+				// Check the blocks directly adjacent to the six faces of the current empty block
 				struct block *other;
-				enum FACE face;
 
 				// Positive x
-				if((other = SELECT_BLOCK_CHECKED_P(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
-					face = LEFT;
-					create_vertex(x+1, y, z, -1, 0, 0, other, face);
-					create_vertex(x+1, y, z+1, -1, 0, 0, other, face);
-					create_vertex(x+1, y+1, z+1, -1, 0, 0, other, face);
-					create_vertex(x+1, y+1, z, -1, 0, 0, other, face);
+				if((other = get_block(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.right;
+					create_vertex(x+1, y, z, -1, 0, 0, other->color, occlusion);
+					create_vertex(x+1, y, z+1, -1, 0, 0, other->color, occlusion);
+					create_vertex(x+1, y+1, z+1, -1, 0, 0, other->color, occlusion);
+					create_vertex(x+1, y+1, z, -1, 0, 0, other->color, occlusion);
 				}
 				// Negative x
-				if((other = SELECT_BLOCK_CHECKED_P(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
-					face = RIGHT;
-					create_vertex(x, y, z+1, 1, 0, 0, other, face);
-					create_vertex(x, y, z, 1, 0, 0, other, face);
-					create_vertex(x, y+1, z, 1, 0, 0, other, face);
-					create_vertex(x, y+1, z+1, 1, 0, 0, other, face);
+				if((other = get_block(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.left;
+					create_vertex(x, y, z+1, 1, 0, 0, other->color, occlusion);
+					create_vertex(x, y, z, 1, 0, 0, other->color, occlusion);
+					create_vertex(x, y+1, z, 1, 0, 0, other->color, occlusion);
+					create_vertex(x, y+1, z+1, 1, 0, 0, other->color, occlusion);
 				}
 				// Positive y
-				if((other = SELECT_BLOCK_CHECKED_P(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
-					face = DOWN;
-					create_vertex(x+1, y+1, z+1, 0, -1, 0, other, face);
-					create_vertex(x+1, y+1, z, 0, -1, 0, other, face);
-					create_vertex(x, y+1, z, 0, -1, 0, other, face);
-					create_vertex(x, y+1, z+1, 0, -1, 0, other, face);
+				if((other = get_block(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.up;
+					create_vertex(x+1, y+1, z+1, 0, -1, 0, other->color, occlusion);
+					create_vertex(x+1, y+1, z, 0, -1, 0, other->color, occlusion);
+					create_vertex(x, y+1, z, 0, -1, 0, other->color, occlusion);
+					create_vertex(x, y+1, z+1, 0, -1, 0, other->color, occlusion);
 				}
 				// Negative y
-				if((other = SELECT_BLOCK_CHECKED_P(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
-					face = UP;
-					create_vertex(x, y, z, 0, 1, 0, other, face);
-					create_vertex(x+1, y, z, 0, 1, 0, other, face);
-					create_vertex(x+1, y, z+1, 0, 1, 0, other, face);
-					create_vertex(x, y, z+1, 0, 1, 0, other, face);
+				if((other = get_block(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.down;
+					create_vertex(x, y, z, 0, 1, 0, other->color, occlusion);
+					create_vertex(x+1, y, z, 0, 1, 0, other->color, occlusion);
+					create_vertex(x+1, y, z+1, 0, 1, 0, other->color, occlusion);
+					create_vertex(x, y, z+1, 0, 1, 0, other->color, occlusion);
 				}
 				// Positive z
-				if((other = SELECT_BLOCK_CHECKED_P(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
-					face = BACK;
-					create_vertex(x+1, y, z+1, 0, 0, -1, other, face);
-					create_vertex(x, y, z+1, 0, 0, -1, other, face);
-					create_vertex(x, y+1, z+1, 0, 0, -1, other, face);
-					create_vertex(x+1, y+1, z+1, 0, 0, -1, other, face);
+				if((other = get_block(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.front;
+					create_vertex(x+1, y, z+1, 0, 0, -1, other->color, occlusion);
+					create_vertex(x, y, z+1, 0, 0, -1, other->color, occlusion);
+					create_vertex(x, y+1, z+1, 0, 0, -1, other->color, occlusion);
+					create_vertex(x+1, y+1, z+1, 0, 0, -1, other->color, occlusion);
 				}
 				// Negative z
-				if((other = SELECT_BLOCK_CHECKED_P(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
-					face = FRONT;
-					create_vertex(x, y, z, 0, 0, 1, other, face);
-					create_vertex(x, y+1, z, 0, 0, 1, other, face);
-					create_vertex(x+1, y+1, z, 0, 0, 1, other, face);
-					create_vertex(x+1, y, z, 0, 0, 1, other, face);
+				if((other = get_block(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
+					float occlusion = (current == NULL) ? 0.0f : current->occlusion.back;
+					create_vertex(x, y, z, 0, 0, 1, other->color, occlusion);
+					create_vertex(x, y+1, z, 0, 0, 1, other->color, occlusion);
+					create_vertex(x+1, y+1, z, 0, 0, 1, other->color, occlusion);
+					create_vertex(x+1, y, z, 0, 0, 1, other->color, occlusion);
 				}
 			}
 		}
@@ -195,70 +273,62 @@ static void fill_vertex_buffer() {
 
 // Main functions
 
-void world_init(const char *vertex_shader_filename, const char *fragment_shader_filename) {
-	printf("World size: %dx%dx%d\n", WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z);
-
-	// Seed random number generator
-	srandomdev();
-
-	// Create height points
-	unsigned int height_points_amount = WORLD_SIZE_XZ / 2000;
-	if(height_points_amount < 3) {
-		height_points_amount = 3;
-	}
-	printf("Generating %u height points\n", height_points_amount);
-	struct height_point *height_points = (struct height_point *) malloc(sizeof(struct height_point) * height_points_amount);
-	for(unsigned int i = 0; i < height_points_amount; i++) {
-		struct height_point *point = &height_points[i];
-
-		point->x = random() % WORLD_SIZE_X;
-		point->z = random() % WORLD_SIZE_Z;
-		point->height = random() % WORLD_SIZE_Y;
-	}
-
-	// Create height map (height for every (x,z) coordinate)
-	printf("Generating height map\n");
-	int *height_map = (int *) malloc(sizeof(int) * WORLD_SIZE_XZ);
-	for(int x = 0; x < WORLD_SIZE_X; x++) {
-		for(int z = 0; z < WORLD_SIZE_Z; z++) {
-			float total_height = 0;
-			float total_weight = 0;
-
-			// Height is the weighted average of all height points (weight = distance) with some noise
-			for(unsigned int i = 0; i < height_points_amount; i++) {
-				struct height_point *point = &height_points[i];
-
-				if(x == point->x && z == point->z) {
-					total_height += point->height;
-					total_weight += 1;
-				} else {
-					float weight = (float) (1 / (pow(x - point->x, 2) + pow(z - point->z, 2)));
-					total_height += point->height * weight;
-					total_weight += weight;
-				}
-			}
-
-			SELECT_HEIGHT(x, z) = (int) (total_height / total_weight) + (random() % 2);
+void world_init(int argc, char **argv) {
+	// Parse options
+	char *vertex_shader_file = NULL, *fragment_shader_file = NULL, *height_map_file = NULL;
+	int c;
+	while((c = getopt(argc, argv, "v:f:m:")) != -1) {
+		switch(c) {
+			case 'v':
+				vertex_shader_file = optarg;
+				break;
+			case 'f':
+				fragment_shader_file = optarg;
+				break;
+			case 'm':
+				height_map_file = optarg;
+				break;
+			case '?':
+			default:
+				fprintf(stderr, "Invalid arguments\n");
+				exit(1);
 		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	// Default options
+	if(vertex_shader_file == NULL) {
+		vertex_shader_file = "res/shaders/vertex.glsl";
+	}
+	if(fragment_shader_file == NULL) {
+		fragment_shader_file = "res/shaders/fragment.glsl";
+	}
+
+	fprintf(stderr, "World size: %dx%dx%d\n", WORLD_SIZE_X, WORLD_SIZE_Y, WORLD_SIZE_Z);
+
+	// Create height map
+	if(height_map_file != NULL) {
+		load_height_map(height_map_file);
+	} else {
+		create_random_height_map();
 	}
 
 	// Populate world with blocks
-	printf("Generating blocks\n");
+	fprintf(stderr, "Generating blocks\n");
 	world = (struct block *) malloc(sizeof(struct block) * WORLD_SIZE_XYZ);
 	for(int x = 0; x < WORLD_SIZE_X; x++) {
-		for(int y = 0; y < WORLD_SIZE_Y; y++) {
-			for(int z = 0; z < WORLD_SIZE_Z; z++) {
-				struct block *current = SELECT_BLOCK_P(x, y, z);
+		for(int z = 0; z < WORLD_SIZE_Z; z++) {
+			int height = get_height(x, z);
 
-				if(y <= SELECT_HEIGHT(x, z)) {
+			for(int y = 0; y < WORLD_SIZE_Y; y++) {
+				struct block *current = get_block(x, y, z);
+
+				if(y < height) {
 					current->type = TYPE_STONE;
-					int r = random() % 8;
-					current->color.r = 128;
-					current->color.g = 128;
-					current->color.b = 128;
-					//current->color.r = 38 + r;
-					//current->color.g = 32 + r;
-					//current->color.b = 32 + r;
+					current->color.r = (64 + random() % 16) / 256.0f;
+					current->color.g = (64 + random() % 16) / 256.0f;
+					current->color.b = (64 + random() % 16) / 256.0f;
 				} else {
 					current->type = TYPE_AIR;
 				}
@@ -267,23 +337,21 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 	}
 
 	// Calculate occlusion values
-	printf("Calculating occlusion\n");
-	calculate_occlusion(world);
-	dump_block(&world[0]);
+	fprintf(stderr, "Calculating occlusion\n");
+	calculate_occlusion();
 
 	// Create VBO
-	printf("Creating vertex buffer\n");
+	fprintf(stderr, "Creating vertex buffer\n");
 	glGenBuffers(1, &resources.vertex_buffer_handle);
 	fill_vertex_buffer();
-	dump_vertex(&resources.vertex_buffer_data[0]);
 	fprintf(stderr, "Filled vertex buffer with %u vertices (%f MB)\n", vertex_amount, (sizeof(struct vertex) * vertex_amount) / (float)(1024 * 1024));
 
 	// Create shaders
-	resources.vertex_shader = make_shader(GL_VERTEX_SHADER, vertex_shader_filename);
+	resources.vertex_shader = make_shader(GL_VERTEX_SHADER, vertex_shader_file);
 	if(!resources.vertex_shader) {
 		exit(1);
 	}
-	resources.fragment_shader = make_shader(GL_FRAGMENT_SHADER, fragment_shader_filename);
+	resources.fragment_shader = make_shader(GL_FRAGMENT_SHADER, fragment_shader_file);
 	if(!resources.fragment_shader) {
 		exit(1);
 	}
@@ -298,27 +366,24 @@ void world_init(const char *vertex_shader_filename, const char *fragment_shader_
 	resources.attributes.position = glGetAttribLocation(resources.program, "position");
 	resources.attributes.normal = glGetAttribLocation(resources.program, "normal");
 	resources.attributes.color = glGetAttribLocation(resources.program, "color");
-	resources.attributes.light = glGetAttribLocation(resources.program, "light");
+	resources.attributes.occlusion = glGetAttribLocation(resources.program, "occlusion");
 
 	// Set camera position and target
 	camera_position.x = WORLD_SIZE_X * 0.0f;
-	camera_position.y = WORLD_SIZE_Y * 0.5f;
-	camera_position.z = WORLD_SIZE_Z * 0.05f;
-	camera_target.x = WORLD_SIZE_X * 1.0f;
-	camera_target.y = WORLD_SIZE_Y * 0.6f;
-	camera_target.z = WORLD_SIZE_Z * 1.0f;
+	camera_position.y = WORLD_SIZE_Y * 1.2f;
+	camera_position.z = WORLD_SIZE_Z * 1.2f;
+	camera_target.x = WORLD_SIZE_X * 0.5f;
+	camera_target.y = WORLD_SIZE_Y * 0.5f;
+	camera_target.z = WORLD_SIZE_Z * 0.5f;
 }
 
 void world_tick(int delta) {
-	// Move camera position
-	camera_position.x += delta * WORLD_SIZE_X * 0.00005f;
-	camera_position.y += delta * WORLD_SIZE_Y * 0.00001f;
-	camera_position.z += delta * WORLD_SIZE_Z * 0.0f;
+	ticks += delta;
 
-	// Move camera target
-	camera_target.x += delta * WORLD_SIZE_X * -0.00005f;
-	camera_target.y += delta * WORLD_SIZE_Y * 0.0f;
-	camera_target.z += delta * WORLD_SIZE_Z * 0.0f;
+	// Move camera position
+	camera_position.x = (GLfloat) sin(ticks / 1500.0f) * WORLD_SIZE_X * 1.2f + WORLD_SIZE_X * 0.5f;
+	camera_position.y = (GLfloat) cos(ticks / 3500.0f) * WORLD_SIZE_Y * 1.2f + WORLD_SIZE_Y * 0.5f;
+	camera_position.z = (GLfloat) cos(ticks / 1500.0f) * WORLD_SIZE_Z * 1.2f + WORLD_SIZE_Z * 0.5f;
 }
 
 void world_display() {
@@ -340,17 +405,22 @@ void world_display() {
 	glEnableVertexAttribArray((GLuint) resources.attributes.normal);
 	glVertexAttribPointer((GLuint) resources.attributes.color, 3, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2));
 	glEnableVertexAttribArray((GLuint) resources.attributes.color);
-	glVertexAttribPointer((GLuint) resources.attributes.light, 1, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2 + sizeof(struct color)));
-	glEnableVertexAttribArray((GLuint) resources.attributes.light);
+	glVertexAttribPointer((GLuint) resources.attributes.occlusion, 1, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(sizeof(struct vec3) * 2 + sizeof(struct color)));
+	glEnableVertexAttribArray((GLuint) resources.attributes.occlusion);
+
+	glPushMatrix();
+
+	// Position camera
+	gluLookAt(camera_position.x, camera_position.y, camera_position.z, camera_target.x, camera_target.y, camera_target.z, 0.0f, 1.0f, 0.0f);
 
 	// Draw quads, starting at offset 0, and specify the amount
-	glPushMatrix();
-	gluLookAt(camera_position.x, camera_position.y, camera_position.z, camera_target.x, camera_target.y, camera_target.z, 0.0f, 1.0f, 0.0f);
 	glDrawArrays(GL_QUADS, 0, (GLsizei) vertex_amount);
+
 	glPopMatrix();
 
+	// Clean up
 	glDisableVertexAttribArray((GLuint) resources.attributes.position);
 	glDisableVertexAttribArray((GLuint) resources.attributes.normal);
 	glDisableVertexAttribArray((GLuint) resources.attributes.color);
-	glDisableVertexAttribArray((GLuint) resources.attributes.light);
+	glDisableVertexAttribArray((GLuint) resources.attributes.occlusion);
 }

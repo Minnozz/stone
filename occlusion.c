@@ -3,11 +3,30 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "occlusion.h"
 
+static void dump_ray(struct ray *ray) {
+	fprintf(stderr, "Dumping ray:\n");
+	fprintf(stderr, "\tx = %f\n", ray->x);
+	fprintf(stderr, "\ty = %f\n", ray->y);
+	fprintf(stderr, "\tz = %f\n", ray->z);
+}
+
+static void dump_directions(struct directions *directions) {
+	fprintf(stderr, "Dumping directions:\n");
+	fprintf(stderr, "\tup = %f\n", directions->up);
+	fprintf(stderr, "\tdown = %f\n", directions->down);
+	fprintf(stderr, "\tleft = %f\n", directions->left);
+	fprintf(stderr, "\tright = %f\n", directions->right);
+	fprintf(stderr, "\tfront = %f\n", directions->front);
+	fprintf(stderr, "\tback = %f\n", directions->back);
+}
+
 static struct ray *generate_rays(int amount) {
 	struct ray *rays = (struct ray *) malloc(sizeof(struct ray) * (unsigned int) amount);
+	assert(rays != NULL);
 
 	double inc = M_PI * (3 - sqrt(5));
 	double off = 2 / (double) amount;
@@ -19,6 +38,7 @@ static struct ray *generate_rays(int amount) {
 		rays[i].x = (float) (cos(phi) * r);
 		rays[i].y = (float) y;
 		rays[i].z = (float) (sin(phi) * r);
+		//dump_ray(&rays[i]);
 	}
 
 	return rays;
@@ -26,6 +46,7 @@ static struct ray *generate_rays(int amount) {
 
 static struct offset *generate_intersecting_offsets(struct ray *ray, int amount) {
 	struct offset *offsets = (struct offset *) malloc(sizeof(struct offset) * (unsigned int) amount);
+	assert(offsets != NULL);
 
 	// Ray has unit length; scale to make steps of 0.2
 	float sx = ray->x * 0.2f;
@@ -57,6 +78,16 @@ static struct offset *generate_intersecting_offsets(struct ray *ray, int amount)
 			last_y = new_y;
 			last_z = new_z;
 			i++;
+#if 0
+			// Render the offsets (starting at the center of the map) as red blocks
+			struct block *tmp = get_block(new_x + WORLD_SIZE_X / 2, new_y + WORLD_SIZE_Y / 2, new_z + WORLD_SIZE_Z / 2);
+			if(tmp != NULL) {
+				tmp->type = TYPE_STONE;
+				tmp->color.r = 1.0f;
+				tmp->color.g = 0.0f;
+				tmp->color.b = 0.0f;
+			}
+#endif
 		}
 		x += sx;
 		y += sy;
@@ -66,28 +97,39 @@ static struct offset *generate_intersecting_offsets(struct ray *ray, int amount)
 	return offsets;
 }
 
-static struct directions normalize_rays(struct ray *rays) {
-	struct directions normal = {0, 0, 0, 0, 0, 0};
+static struct directions calculate_face_totals(struct ray *rays) {
+	struct directions totals = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 	for(int i = 0; i < RAY_AMOUNT; i++) {
-		struct ray *ray = rays + i;
-		normal.left += ray->colliding.left;
-		normal.right += ray->colliding.right;
-		normal.up += ray->colliding.up;
-		normal.down += ray->colliding.down;
-		normal.front += ray->colliding.front;
-		normal.back += ray->colliding.back;
+		struct ray current = rays[i];
+		totals.left += current.colliding.left;
+		totals.right += current.colliding.right;
+		totals.up += current.colliding.up;
+		totals.down += current.colliding.down;
+		totals.front += current.colliding.front;
+		totals.back += current.colliding.back;
 	}
-	return normal;
+	float epsilon = 0.000001f;
+	if(
+		(totals.left > -epsilon && totals.left < epsilon) ||
+		(totals.right > -epsilon && totals.right < epsilon) ||
+		(totals.up > -epsilon && totals.up < epsilon) ||
+		(totals.down > -epsilon && totals.down < epsilon) ||
+		(totals.front > -epsilon && totals.front < epsilon) ||
+		(totals.back > -epsilon && totals.back < epsilon)
+	) {
+		fprintf(stderr, "Error: not enough light colliding with one of the faces\n");
+		dump_directions(&totals);
+		exit(1);
+	}
+	return totals;
 }
 
-void calculate_occlusion(struct block *world) {
-	printf("Generating rays\n");
+void calculate_occlusion() {
+	fprintf(stderr, "Generating %d rays\n", RAY_AMOUNT);
 	struct ray *rays = generate_rays(RAY_AMOUNT);
+	struct directions face_totals = calculate_face_totals(rays);
 
-	printf("Normalizing rays\n");
-	struct directions normal = normalize_rays(rays);
-
-	printf("Generating ray offsets\n");
+	fprintf(stderr, "Generating %d ray offsets per ray (%d total)\n", OFFSET_AMOUNT, RAY_AMOUNT * OFFSET_AMOUNT);
 	struct offset *ray_offsets[RAY_AMOUNT];
 	for(int i = 0; i < RAY_AMOUNT; i++) {
 		struct ray *ray = rays + i;
@@ -95,19 +137,23 @@ void calculate_occlusion(struct block *world) {
 	}
 
 	// Calculate occlusion per face
-	printf("Calculating face occlusion\n");
+	fprintf(stderr, "Calculating face occlusion\n");
 	for(int x = 0; x < WORLD_SIZE_X; x++) {
+		fprintf(stderr, "\tx = %d\n", x);
 		for(int y = 0; y < WORLD_SIZE_Y; y++) {
 			for(int z = 0; z < WORLD_SIZE_Z; z++) {
-				struct block *current = SELECT_BLOCK_P(x, y, z);
-				current->occlusion.left = 0;
-				current->occlusion.right = 0;
-				current->occlusion.up = 0;
-				current->occlusion.down = 0;
-				current->occlusion.front = 0;
-				current->occlusion.back = 0;
+				struct block *block = get_block(x, y, z);
+				block->occlusion.left = 0;
+				block->occlusion.right = 0;
+				block->occlusion.up = 0;
+				block->occlusion.down = 0;
+				block->occlusion.front = 0;
+				block->occlusion.back = 0;
+
+				int escaped = 0;
 				for(int i = 0; i < RAY_AMOUNT; i++) {
 					struct ray *ray = rays + i;
+
 					bool collided = false;
 					for(int j = 0; j < OFFSET_AMOUNT; j++) {
 						int rx = x + ray_offsets[i][j].x;
@@ -118,29 +164,33 @@ void calculate_occlusion(struct block *world) {
 							// Ray has escaped the world
 							break;
 						}
-						if(SELECT_BLOCK(rx, ry, rz).type != TYPE_AIR) {
+						if(get_block(rx, ry, rz)->type != TYPE_AIR) {
 							collided = true;
 							break;
 						}
 					}
 					if(!collided) {
-						// Add light from escaped ray to current block
-						current->occlusion.left += ray->colliding.left;
-						current->occlusion.right += ray->colliding.right;
-						current->occlusion.up += ray->colliding.up;
-						current->occlusion.down += ray->colliding.down;
-						current->occlusion.front += ray->colliding.front;
-						current->occlusion.back += ray->colliding.back;
+						// Add light from escaped ray to the block face it would collide with
+						block->occlusion.left += ray->colliding.left;
+						block->occlusion.right += ray->colliding.right;
+						block->occlusion.up += ray->colliding.up;
+						block->occlusion.down += ray->colliding.down;
+						block->occlusion.front += ray->colliding.front;
+						block->occlusion.back += ray->colliding.back;
+
+						escaped++;
 					}
 				}
-				// Normalize current block
-				current->occlusion.left = 1 - (current->occlusion.left / normal.left);
-				current->occlusion.right = 1 - (current->occlusion.right / normal.right);
-				current->occlusion.up = 1 - (current->occlusion.up / normal.up);
-				current->occlusion.down = 1 - (current->occlusion.down / normal.down);
-				current->occlusion.front = 1 - (current->occlusion.front / normal.front);
-				current->occlusion.back = 1 - (current->occlusion.back / normal.back);
-				//printf("normalized = (%f, %f, %f, %f, %f, %f)\n", current->occlusion.left, current->occlusion.right, current->occlusion.up, current->occlusion.down, current->occlusion.front, current->occlusion.back);
+				//fprintf(stderr, "%4d/%d rays escaped from (%d,%d,%d) = %d%%\n", escaped, RAY_AMOUNT, x, y, z, (int) (escaped * 100 / RAY_AMOUNT));
+
+				// Normalize occlusion values
+				float epsilon = 0.0000001f;
+				block->occlusion.left	= 1 - (block->occlusion.left / face_totals.left);
+				block->occlusion.right	= 1 - (block->occlusion.right / face_totals.right);
+				block->occlusion.up		= 1 - (block->occlusion.up / face_totals.up);
+				block->occlusion.down	= 1 - (block->occlusion.down / face_totals.down);
+				block->occlusion.front	= 1 - (block->occlusion.front / face_totals.front);
+				block->occlusion.back	= 1 - (block->occlusion.back / face_totals.back);
 			}
 		}
 	}
