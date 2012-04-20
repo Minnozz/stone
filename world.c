@@ -140,7 +140,7 @@ static void fill_vertex_buffer() {
 
 				// Positive x
 				if((other = SELECT_BLOCK_CHECKED_P(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
-					face = RIGHT;
+					face = LEFT;
 					create_vertex(x+1, y, z, -1, 0, 0, other, face);
 					create_vertex(x+1, y, z+1, -1, 0, 0, other, face);
 					create_vertex(x+1, y+1, z+1, -1, 0, 0, other, face);
@@ -148,7 +148,7 @@ static void fill_vertex_buffer() {
 				}
 				// Negative x
 				if((other = SELECT_BLOCK_CHECKED_P(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
-					face = LEFT;
+					face = RIGHT;
 					create_vertex(x, y, z+1, 1, 0, 0, other, face);
 					create_vertex(x, y, z, 1, 0, 0, other, face);
 					create_vertex(x, y+1, z, 1, 0, 0, other, face);
@@ -156,7 +156,7 @@ static void fill_vertex_buffer() {
 				}
 				// Positive y
 				if((other = SELECT_BLOCK_CHECKED_P(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
-					face = UP;
+					face = DOWN;
 					create_vertex(x+1, y+1, z+1, 0, -1, 0, other, face);
 					create_vertex(x+1, y+1, z, 0, -1, 0, other, face);
 					create_vertex(x, y+1, z, 0, -1, 0, other, face);
@@ -164,7 +164,7 @@ static void fill_vertex_buffer() {
 				}
 				// Negative y
 				if((other = SELECT_BLOCK_CHECKED_P(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
-					face = DOWN;
+					face = UP;
 					create_vertex(x, y, z, 0, 1, 0, other, face);
 					create_vertex(x+1, y, z, 0, 1, 0, other, face);
 					create_vertex(x+1, y, z+1, 0, 1, 0, other, face);
@@ -172,7 +172,7 @@ static void fill_vertex_buffer() {
 				}
 				// Positive z
 				if((other = SELECT_BLOCK_CHECKED_P(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
-					face = FRONT;
+					face = BACK;
 					create_vertex(x+1, y, z+1, 0, 0, -1, other, face);
 					create_vertex(x, y, z+1, 0, 0, -1, other, face);
 					create_vertex(x, y+1, z+1, 0, 0, -1, other, face);
@@ -180,7 +180,7 @@ static void fill_vertex_buffer() {
 				}
 				// Negative z
 				if((other = SELECT_BLOCK_CHECKED_P(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
-					face = BACK;
+					face = FRONT;
 					create_vertex(x, y, z, 0, 0, 1, other, face);
 					create_vertex(x, y+1, z, 0, 0, 1, other, face);
 					create_vertex(x+1, y+1, z, 0, 0, 1, other, face);
