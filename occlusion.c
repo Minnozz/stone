@@ -149,10 +149,14 @@ void calculate_occlusion() {
 	// Calculate occlusion per face
 	fprintf(stderr, "Calculating face occlusion\n");
 	for(int x = 0; x < WORLD_SIZE_X; x++) {
-		fprintf(stderr, "\tx = %d\n", x);
 		for(int y = 0; y < WORLD_SIZE_Y; y++) {
 			for(int z = 0; z < WORLD_SIZE_Z; z++) {
+				// Only calculate occlusion for AIR blocks with neighbors
 				struct block *block = get_block(x, y, z);
+				if(block->type != TYPE_AIR || !has_neighbors(x, y, z)) {
+					continue;
+				}
+
 				block->occlusion.right = 0;
 				block->occlusion.left = 0;
 				block->occlusion.up = 0;

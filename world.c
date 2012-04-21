@@ -80,6 +80,31 @@ static inline void set_height(int x, int z, int height) {
 	height_map[x + z * WORLD_SIZE_X] = height;
 }
 
+bool has_neighbors(int x, int y, int z) {
+	struct block *other;
+
+	if((other = get_block(x+1, y, z)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+	if((other = get_block(x-1, y, z)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+	if((other = get_block(x, y+1, z)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+	if((other = get_block(x, y-1, z)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+	if((other = get_block(x, y, z+1)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+	if((other = get_block(x, y, z-1)) != NULL && other->type != TYPE_AIR) {
+		return true;
+	}
+
+	return false;
+}
+
 static void dump_vertex(struct vertex *vert) {
 	fprintf(stderr, "Dumping vertex:\n");
 	fprintf(stderr, "\tposition = (%f, %f, %f)\n", vert->position.x, vert->position.y, vert->position.z);
@@ -381,9 +406,9 @@ void world_tick(int delta) {
 	ticks += delta;
 
 	// Move camera position
-	camera_position.x = (GLfloat) sin(ticks / 1500.0f) * WORLD_SIZE_X * 1.2f + WORLD_SIZE_X * 0.5f;
-	camera_position.y = (GLfloat) cos(ticks / 3500.0f) * WORLD_SIZE_Y * 1.2f + WORLD_SIZE_Y * 0.5f;
-	camera_position.z = (GLfloat) cos(ticks / 1500.0f) * WORLD_SIZE_Z * 1.2f + WORLD_SIZE_Z * 0.5f;
+	camera_position.x = (GLfloat) sin(ticks / 1500.0f) * WORLD_SIZE_X * 1.1f + WORLD_SIZE_X * 0.5f;
+	camera_position.y = (GLfloat) cos(ticks / 3500.0f) * WORLD_SIZE_Y * 1.1f + WORLD_SIZE_Y * 0.75f;
+	camera_position.z = (GLfloat) cos(ticks / 1500.0f) * WORLD_SIZE_Z * 1.1f + WORLD_SIZE_Z * 0.5f;
 }
 
 void world_display() {

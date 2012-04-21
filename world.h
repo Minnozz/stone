@@ -1,9 +1,11 @@
 #ifndef _WORLD_H
 #define _WORLD_H
 
-#define WORLD_SIZE_X 64
+#include <stdbool.h>
+
+#define WORLD_SIZE_X 128
 #define WORLD_SIZE_Y 64
-#define WORLD_SIZE_Z 64
+#define WORLD_SIZE_Z 128
 
 #define WORLD_SIZE_XZ WORLD_SIZE_X * WORLD_SIZE_Z
 #define WORLD_SIZE_XYZ WORLD_SIZE_X * WORLD_SIZE_Y * WORLD_SIZE_Z
@@ -66,6 +68,7 @@ struct height_point {
 };
 
 struct block *get_block(int x, int y, int z);
+bool has_neighbors(int x, int y, int z);
 
 void world_init(int argc, char **argv);
 void world_tick(int delta);
