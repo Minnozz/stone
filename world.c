@@ -92,7 +92,7 @@ static void dump_block(struct block *block) {
 	fprintf(stderr, "Dumping block:\n");
 	fprintf(stderr, "\ttype = %d\n", block->type);
 	fprintf(stderr, "\tcolor = (%f, %f, %f)\n", block->color.r, block->color.g, block->color.b);
-	fprintf(stderr, "\tocclusion = (%f, %f, %f, %f, %f, %f)\n", block->occlusion.up, block->occlusion.down, block->occlusion.left, block->occlusion.right, block->occlusion.front, block->occlusion.back);
+	fprintf(stderr, "\tocclusion = (%f, %f, %f, %f, %f, %f)\n", block->occlusion.right, block->occlusion.left, block->occlusion.up, block->occlusion.down, block->occlusion.front, block->occlusion.back);
 }
 
 // Height map
@@ -127,7 +127,7 @@ static void load_height_map(char *filename) {
 
 static void create_random_height_map() {
 	// Determine amount of points to use
-	unsigned int height_points_amount = WORLD_SIZE_XZ / 2000;
+	unsigned int height_points_amount = WORLD_SIZE_XZ / 1500;
 	if(height_points_amount < 3) {
 		height_points_amount = 3;
 	}

@@ -38,10 +38,10 @@ struct color {
 };
 
 struct directions {
+	float right;
+	float left;
 	float up;
 	float down;
-	float left;
-	float right;
 	float front;
 	float back;
 };

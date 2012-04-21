@@ -16,10 +16,10 @@ static void dump_ray(struct ray *ray) {
 
 static void dump_directions(struct directions *directions) {
 	fprintf(stderr, "Dumping directions:\n");
+	fprintf(stderr, "\tright = %f\n", directions->right);
+	fprintf(stderr, "\tleft = %f\n", directions->left);
 	fprintf(stderr, "\tup = %f\n", directions->up);
 	fprintf(stderr, "\tdown = %f\n", directions->down);
-	fprintf(stderr, "\tleft = %f\n", directions->left);
-	fprintf(stderr, "\tright = %f\n", directions->right);
 	fprintf(stderr, "\tfront = %f\n", directions->front);
 	fprintf(stderr, "\tback = %f\n", directions->back);
 }
@@ -38,7 +38,13 @@ static struct ray *generate_rays(int amount) {
 		rays[i].x = (float) (cos(phi) * r);
 		rays[i].y = (float) y;
 		rays[i].z = (float) (sin(phi) * r);
-		//dump_ray(&rays[i]);
+		// Determine from which faces the ray 'escapes'
+		rays[i].colliding.right = (rays[i].x < 0) ? -rays[i].x : 0.0f;
+		rays[i].colliding.left = (rays[i].x > 0) ? rays[i].x : 0.0f;
+		rays[i].colliding.up = (rays[i].y < 0) ? -rays[i].y : 0.0f;
+		rays[i].colliding.down = (rays[i].y > 0) ? rays[i].y : 0.0f;
+		rays[i].colliding.front = (rays[i].z < 0) ? -rays[i].z : 0.0f;
+		rays[i].colliding.back = (rays[i].z > 0) ? rays[i].z : 0.0f;
 	}
 
 	return rays;
@@ -100,18 +106,18 @@ static struct offset *generate_intersecting_offsets(struct ray *ray, int amount)
 static struct directions calculate_face_totals(struct ray *rays) {
 	struct directions totals = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 	for(int i = 0; i < RAY_AMOUNT; i++) {
-		struct ray current = rays[i];
-		totals.left += current.colliding.left;
-		totals.right += current.colliding.right;
-		totals.up += current.colliding.up;
-		totals.down += current.colliding.down;
-		totals.front += current.colliding.front;
-		totals.back += current.colliding.back;
+		totals.right += rays[i].colliding.right;
+		totals.left += rays[i].colliding.left;
+		totals.up += rays[i].colliding.up;
+		totals.down += rays[i].colliding.down;
+		totals.front += rays[i].colliding.front;
+		totals.back += rays[i].colliding.back;
 	}
+
 	float epsilon = 0.000001f;
 	if(
-		(totals.left > -epsilon && totals.left < epsilon) ||
 		(totals.right > -epsilon && totals.right < epsilon) ||
+		(totals.left > -epsilon && totals.left < epsilon) ||
 		(totals.up > -epsilon && totals.up < epsilon) ||
 		(totals.down > -epsilon && totals.down < epsilon) ||
 		(totals.front > -epsilon && totals.front < epsilon) ||
@@ -119,8 +125,13 @@ static struct directions calculate_face_totals(struct ray *rays) {
 	) {
 		fprintf(stderr, "Error: not enough light colliding with one of the faces\n");
 		dump_directions(&totals);
+		for(int i = 0; i < RAY_AMOUNT; i++) {
+			dump_ray(&rays[i]);
+			dump_directions(&(rays[i].colliding));
+		}
 		exit(1);
 	}
+
 	return totals;
 }
 
@@ -132,8 +143,7 @@ void calculate_occlusion() {
 	fprintf(stderr, "Generating %d ray offsets per ray (%d total)\n", OFFSET_AMOUNT, RAY_AMOUNT * OFFSET_AMOUNT);
 	struct offset *ray_offsets[RAY_AMOUNT];
 	for(int i = 0; i < RAY_AMOUNT; i++) {
-		struct ray *ray = rays + i;
-		ray_offsets[i] = generate_intersecting_offsets(ray, OFFSET_AMOUNT);
+		ray_offsets[i] = generate_intersecting_offsets(rays + i, OFFSET_AMOUNT);
 	}
 
 	// Calculate occlusion per face
@@ -143,8 +153,8 @@ void calculate_occlusion() {
 		for(int y = 0; y < WORLD_SIZE_Y; y++) {
 			for(int z = 0; z < WORLD_SIZE_Z; z++) {
 				struct block *block = get_block(x, y, z);
-				block->occlusion.left = 0;
 				block->occlusion.right = 0;
+				block->occlusion.left = 0;
 				block->occlusion.up = 0;
 				block->occlusion.down = 0;
 				block->occlusion.front = 0;
@@ -171,8 +181,8 @@ void calculate_occlusion() {
 					}
 					if(!collided) {
 						// Add light from escaped ray to the block face it would collide with
-						block->occlusion.left += ray->colliding.left;
 						block->occlusion.right += ray->colliding.right;
+						block->occlusion.left += ray->colliding.left;
 						block->occlusion.up += ray->colliding.up;
 						block->occlusion.down += ray->colliding.down;
 						block->occlusion.front += ray->colliding.front;
@@ -185,8 +195,8 @@ void calculate_occlusion() {
 
 				// Normalize occlusion values
 				float epsilon = 0.0000001f;
-				block->occlusion.left	= 1 - (block->occlusion.left / face_totals.left);
 				block->occlusion.right	= 1 - (block->occlusion.right / face_totals.right);
+				block->occlusion.left	= 1 - (block->occlusion.left / face_totals.left);
 				block->occlusion.up		= 1 - (block->occlusion.up / face_totals.up);
 				block->occlusion.down	= 1 - (block->occlusion.down / face_totals.down);
 				block->occlusion.front	= 1 - (block->occlusion.front / face_totals.front);
