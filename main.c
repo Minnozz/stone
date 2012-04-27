@@ -72,6 +72,20 @@ void display() {
 	glutSwapBuffers();
 }
 
+void keyboard(unsigned char key, int x, int y) {
+	switch(key) {
+		case 'q':	// Quit
+			exit(0);
+			break;
+		default:
+			world_keyboard(key, x, y);
+			break;
+	}
+}
+
+void mouse(int button, int state, int x, int y) {
+}
+
 int main(int argc, char **argv) {
 	glutInit(&argc, argv);
 
@@ -81,6 +95,8 @@ int main(int argc, char **argv) {
 
 	glutIdleFunc(idle);
 	glutDisplayFunc(display);
+	glutKeyboardFunc(keyboard);
+	glutMouseFunc(mouse);
 
 	glewInit();
 	if(!GLEW_VERSION_2_0) {

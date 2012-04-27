@@ -73,5 +73,7 @@ bool has_neighbors(int x, int y, int z);
 void world_init(int argc, char **argv);
 void world_tick(int delta);
 void world_display(void);
+void world_keyboard(unsigned char key, int x, int y);
+void world_mouse(int button, int state, int x, int y);
 
 #endif /* !defined _WORLD_H */

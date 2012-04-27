@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+#include <stdbool.h>
 #include <GL/glew.h>
 #include <GLUT/glut.h>
 
@@ -13,6 +14,8 @@
 #include "world.h"
 
 // Globals
+
+bool paused = false;
 
 int ticks = 0;
 
@@ -190,7 +193,11 @@ static void create_random_height_map() {
 				}
 			}
 
-			set_height(x, z, (int) (total_height / total_weight) + (random() % 2));
+			int height = (int) (total_height / total_weight) + (random() % 2);
+			if(height < 1) {
+				height = 1;
+			}
+			set_height(x, z, height);
 		}
 	}
 }
@@ -403,6 +410,10 @@ void world_init(int argc, char **argv) {
 }
 
 void world_tick(int delta) {
+	if(paused) {
+		return;
+	}
+
 	ticks += delta;
 
 	// Move camera position
@@ -448,4 +459,15 @@ void world_display() {
 	glDisableVertexAttribArray((GLuint) resources.attributes.normal);
 	glDisableVertexAttribArray((GLuint) resources.attributes.color);
 	glDisableVertexAttribArray((GLuint) resources.attributes.occlusion);
+}
+
+void world_keyboard(unsigned char key, int x, int y) {
+	switch(key) {
+		case 'p':	// Pause
+			paused = !paused;
+			break;
+	}
+}
+
+void world_mouse(int button, int state, int x, int y) {
 }

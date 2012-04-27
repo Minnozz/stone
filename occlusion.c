@@ -198,7 +198,6 @@ void calculate_occlusion() {
 				//fprintf(stderr, "%4d/%d rays escaped from (%d,%d,%d) = %d%%\n", escaped, RAY_AMOUNT, x, y, z, (int) (escaped * 100 / RAY_AMOUNT));
 
 				// Normalize occlusion values
-				float epsilon = 0.0000001f;
 				block->occlusion.right	= 1 - (block->occlusion.right / face_totals.right);
 				block->occlusion.left	= 1 - (block->occlusion.left / face_totals.left);
 				block->occlusion.up		= 1 - (block->occlusion.up / face_totals.up);
