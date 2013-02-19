@@ -1,5 +1,5 @@
-GLEW_INCLUDE = /opt/local/include
-GLEW_LIB = /opt/local/lib
+GLEW_INCLUDE = /usr/local/include
+GLEW_LIB = /usr/local/lib
 CXX = clang
 EFLAGS = -g -Weverything -Werror -Wno-c++-compat -Wno-error=unused-parameter -Wno-error=unused-function -Wno-error=unreachable-code -Wno-error=padded
 
