@@ -76,7 +76,6 @@ void keyboard(unsigned char key, int x, int y) {
 	switch(key) {
 		case 'q':	// Quit
 			exit(0);
-			break;
 		default:
 			world_keyboard(key, x, y);
 			break;
